@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="screen-orientation" content="portrait">
+    <meta http-equiv="content-type" content="text/html; charset=utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=0"/>
+    <title>年会抽奖小程序</title>
+    <link rel="stylesheet" type="text/css" href="css/reset.css">
+    <link rel="stylesheet" href="css/index.css">
+    <script type="text/javascript" src="js/vue.min.js"></script>
+
+   <!--<link rel="stylesheet" type="text/css" href="css/wall.css"> -->
+   <style>   
+    .setup-list em{display:inline-block;width:20px;height:20px;background:#9ca09c;border-radius:50%;line-height:17px;text-align:center;color:#fff;margin-left:10px;cursor:pointer;}   
+    .setup-con.active{transform:scale(1);-webkit-transform:transform:scale(1);-ms-transform:scale(1);opacity:1;}
+    .setup-cover{position:fixed;top:0px;left:0px;right:0px;bottom:0px;background:transparent;z-index:9;}
+
+
+
+    .getprize{position: fixed;top: 20px;right: 20px;font-size: 14px;cursor: auto;z-index:10;}
+    .getprize span{color:#fff;margin-right:6px;}
+    .getprize input{-webkit-appearance: none;appearance:none;background: transparent;color: #fff;border: 1px solid #ddd;padding: 0px 3px;background: #666;border-radius: 3px;}
+    .showprize{position:fixed;width:80%; left:50%; top:50%;transform:translate(-50%,-50%);-webkit-transform:translate(-50%,-50%);-ms-transform:translate(-50%,-50%);-moz-transform:translate(-50%,-50%);background:#fff;padding: 50px 15px 15px;display:none;}
+    .showprize .close{ position:absolute; border:1px solid #999;width:22px;height:22px;border-radius:50%;right:10px;top:10px;text-align:center;line-height:19px;font-size:18px;}
+    .showprize table{border:1px solid black;text-align:center;width:100%;}
+    .showprize table td{min-width:150px;}
+
+    #clear-cach .set-clear{
+        position:fixed;
+        left:50px;top:20px;
+        font-size:14px;
+        cursor:pointer;
+        color:#fff;
+        z-index:2;
+        margin-left:20px;
+    }
+
+    #result{
+        width: 80%;
+        background: linear-gradient(to right,#B7070A,#6C0000);
+        background:-webkit-linear-gradient(to right,#B7070A,#6C0000);
+        background:-ms-linear-gradient(to right,#B7070A,#6C0000);
+        background:-o-linear-gradient(to right,#B7070A,#6C0000);
+        background:-moz-linear-gradient(to right,#B7070A,#6C0000);
+        padding:20px;
+        left:50%;
+        transform:translate(-50%,-50%);
+        -webkit-transform:translate(-50%,-50%);
+        -o-transform:translate(-50%,-50%);
+        -moz-transform:translate(-50%,-50%);
+        -ms-transform:translate(-50%,-50%);
+        border-radius:8px;
+    }
+    #result>h2{margin-bottom: 20px !important;color: #FFE924 !important;}
+    #result>h2 em{display: inline-block; color: #fff;font-size: 28px;width: 28px;font-family: "宋体";height: 28px;border-radius: 50%;line-height: 22px;text-align: center;border: 1px solid #ddd;vertical-align: middle;position: absolute;right: 20px;top: 10px;}
+    #result span{padding: 10px 0;color:#FFE924;border:1px solid #FFE924;box-shadow:none;background:transparent;width:10%;line-height:normal;padding:5px;}
+    .prizelist-show{position: fixed; top: 60px;left: 20px; background: #fff;padding: 7px;border-radius: 5px;line-height: 30px;}
+    .prizelist-show.active{display:none;}
+
+    .btn-footer{
+        position:absolute;
+        bottom:15px;
+        right:20px;
+    }
+   </style>
+</head>
+<body>
+
+
+
+<div id="tools" class="tools">
+    <div class="btn-footer">
+        <button class="pure-button"  v-for="(item,index) in awardSet"  v-on:click="onClick(item)" v-bind:class="{'button-error':defaultSelected.name == item.name}">{{item.name+":"+item.count}}</button>
+       <button
+          class="pure-button"
+          v-on:click="toggle"
+          v-bind:class="{'button-secondary': !running,'button-success': running}" style="width:60px;">{{running?'停!':'开始'}}</button>
+       <button class="pure-button button-warning set-clear" style="margin-left:60px;" v-on:click="resetF">重置</button> 
+    </div>
+ 
+    <div id="main" class="wall" :class="{mask:resultData.isMask}"></div>
+    <div id="result" class="result" v-if="resultData.isShow">
+        <h2 v-if="resultData.award" style="color:#f20b1ad6;font-size:30px;margin-bottom:30px;">
+            恭喜中{{resultData.award}}<em v-on:click="closeMask">x</em></h2>
+        <p><span v-for="(item,index) in resultData.data">{{item}}</span></p>
+    </div>
+
+</div>
+
+
+
+
+<script type="text/javascript" src="js/jquery.min-2.2.1.js"></script>
+
+<script type="text/javascript" src="js/tagcanvas.js"></script>
+<script src="js/export-excel.js"></script>
+<script type="text/javascript">
+var speed = function(){
+    return [0.1 * Math.random() + 0.01, -(0.1 * Math.random() + 0.01)];
+};
+var canvas = document.createElement('canvas');
+canvas.id = 'myCanvas';
+canvas.width = document.body.offsetWidth;
+canvas.height = document.body.offsetHeight;
+document.getElementById('main').appendChild(canvas);
+
+new Vue({
+    el: '#tools',
+    data: {
+        running: false,
+
+        defaultSelected:{
+            name:"特等奖",
+            count:1,
+            award:"2888元红包"  
+        },
+        member:{     //人员范围设置
+            start:"1",
+            end:"428"
+        },
+        drawBtn:["特等奖","一等奖"],  //设置 特等奖 和 一等奖 不限制抽奖人数,所有人员都可以再抽
+        islimit:true,                //例如：抽到一等奖的人不能再抽到 特等奖了
+        awardSet:[
+            {
+                name:"特等奖",
+                count:1,
+                award:"2888元红包"
+            },
+            {
+                name:"一等奖",
+                count:1,
+                award:"1888元红包"
+            },
+            {
+                name:"二等奖",
+                count:8,
+                award:"2M*2.3M品牌羊绒被"
+            },
+            {
+                name:"三等奖",
+                count: 10,
+                award:"精美花茶壶套装或实用锅具套装"
+            },
+            {
+                name:"幸运奖1",
+                count: 50,
+                award:"纪念品套装"
+            },
+            {
+                name:"幸运奖2",
+                count: 50,
+                award:"纪念品套装"
+            }
+        ],
+        isShowAward:true,  //是否显示奖品
+        defaultNoPrize:[    //例如：[1,2,3] 默认不能抽奖的号码  [1-400] 或者不填 [];
+            /*1,2,3*/
+        ],   
+        defaultPrizeNum:{         //默认中奖号码 或者不填 {}
+            // "特等奖":[20],
+            // "一等奖":[10],
+            /*"二等奖":[20,30,20,400]*/
+        },
+        memberArr:[], //抽奖人员数组
+        resultData:{ //抽到奖的 成员数据
+            isShow:false,  //是否显示
+            award:"",      //奖品
+            data:[],       //抽到奖品的号码
+            isMask:false   //是否显示覆盖物
+        } 
+    },
+    created:function(){
+        this.init();
+        this.createHTML();
+    },
+    mounted(){
+        TagCanvas.Start('myCanvas', '', {
+            textColour: null,
+            initial: speed(),
+            dragControl: 1,
+            textHeight: 14
+        });
+    },
+    methods:{
+        init(){
+           this.initMember();
+           this.initPrize();
+           this.initSelected();
+           this.defaultNoPrizeNum();
+           this.defaultPrizeNumF();
+        },
+        /*
+            参与抽奖的人员  [001,002] 形式
+        */
+        initMember(){  
+            var member=[];
+            var personCount = localStorage.getItem('personCount');         //存储
+            var precount=this.member.start,nextcount=this.member.end;
+            if(personCount){
+                personCount=personCount.split("/");
+                precount=personCount[0];
+                nextcount=personCount[1];  
+            }
+            this.member={
+                start:precount,
+                end:nextcount
+            }
+            function getmembers(prenum,nextnum){
+                var len=(""+nextnum).length;
+                for(var i=prenum;i<=nextnum;i++){
+                    var ilen=(""+i).length,leavelen=len-ilen,repeatstr="";
+                    for(var j=0;j<leavelen;j++){
+                        repeatstr+="0"; 
+                    }
+                    member.push((repeatstr+i));
+                }
+            }
+            getmembers(parseInt(precount),parseInt(nextcount));
+            this.memberArr=member;
+        },
+        /*
+            获取 所有奖品 awardSet
+        */
+        initPrize(){
+            var prize=localStorage.getItem('prize');          //存储
+            if(prize){
+                prize.sort(function(a,b){ return a.count-b.count});
+                prize=JSON.parse(prize);
+                this.awardSet=prize;
+            }
+        },
+        initSelected(){
+            this.defaultSelected=this.awardSet[0]
+        },
+        defaultNoPrizeNum:function(){  //默认抽不中号码
+            var defaultArr=this.defaultNoPrize;
+            this.defaultNoPrize=this.rankNum(defaultArr);
+        },
+        defaultPrizeNumF:function(){ //默认中奖号码
+          var that=this;
+            var defaultPrizeNum=this.defaultPrizeNum;
+            var awardSet=this.awardSet;
+            var obj={};
+            for(var key in defaultPrizeNum){
+                var arr=that.rankNum(defaultPrizeNum[key]);
+                for(var i=0;i<awardSet.length;i++){
+                    if(key==awardSet[i].name){
+                        var count=awardSet[i].count;
+                        arr=arr.slice(0,count);
+                        obj[key]=arr;
+                        break;
+                    }
+                }
+            }
+            this.defaultPrizeNum=obj;
+        },
+        createHTML:function(){
+            var prizeArrb=this.hadChoosed();
+            var choosed=prizeArrb.choosed;
+            var choosedStr=choosed.join(",");
+            var html = [ '<ul>' ];
+            for(var i=0;i<this.memberArr.length;i++){
+                var color='white';
+                if(choosedStr.indexOf(this.memberArr[i])>-1){
+                    var color = "yellow";
+                }
+                 html.push('<li><a href="#" style="color: ' + color + ';">' + this.memberArr[i] + '</a></li>');
+            }
+            html.push('</ul>');
+            canvas.innerHTML=html.join('');
+            return html.join('');
+        },
+        onClick: function(item){
+            this.defaultSelected=item;
+        },
+        /*
+            用来过滤掉抽奖的人
+            已经选中的不能在抽 
+        */
+        hadChoosed:function(name,firstinit){  //存储中奖的人{"一等奖"：[10,12]}
+            var returnobj={};
+            var arrStr="";
+            var specialStr="";
+            var prizeNamelocal=JSON.parse(localStorage.getItem("prizeNameArr"))|| {}; 
+            var drawBtnStr=this.drawBtn.toString();
+            for(var key in prizeNamelocal){
+                if(key==name){  //第二次点击,本身奖项不选中
+                }else if(drawBtnStr.indexOf(key)>-1){ //一等奖或是特等奖
+                    specialStr+=(prizeNamelocal[key].toString())+","    
+                }else{  //其他奖项
+                    arrStr+=(prizeNamelocal[key].toString())+","        
+                }   
+            }
+            var arr=[];
+            var specialArr=[];
+            if(arrStr!=""){arr=(arrStr.slice(0,-1)).split(",")}
+            if(specialStr!=""){specialArr=(specialStr.slice(0,-1)).split(",")};
+            if(drawBtnStr.indexOf(name)>-1){   //一等奖和特等奖不 选中
+                if(this.islimit){
+                    arr=specialArr;
+                }else{
+                    arr=[];
+                } 
+            }
+            returnobj={
+                prizeNamelocal:prizeNamelocal,
+                choosed:arr   //[""]或[001,002,003]
+            }
+            return returnobj;
+        },
+        lottery:function(count,name){  //当前奖品数量及名称
+            var personFromNum=this.member.start;
+            var list =document.querySelectorAll("#myCanvas li a");
+            var color = 'yellow';
+            var choosed=this.hadChoosed(name).choosed;  
+            var choosedStr=choosed.join(",");
+            var defaultNoPrizeStr=this.defaultNoPrize.join(",");  //默认过滤 抽不中的 [001,002]
+            var defaultPrizeNumObj=this.defaultPrizeNum;          //默认能抽中的,且对应奖项{"特等奖":[20.10],"一等奖":[]}
+
+            if(JSON.stringify(defaultPrizeNumObj)!='{}' &&  defaultPrizeNumObj[name]){
+                var defaultPrizeArr=defaultPrizeNumObj[name];
+                var defaultPrizeArrLen=defaultPrizeArr.length;
+                count=count-defaultPrizeArrLen; 
+                var previewflag=true;
+            }
+            function Shuffle(a) {
+              var i = a.length-1, t, p;
+              while(i) {
+                p = ~~(Math.random()*i);
+                t = a[i];
+                a[i] = a[p];
+                a[p] = t;
+                --i;
+              }
+            }
+            var ret = this.memberArr.filter(function(m, index){
+                if(choosedStr.indexOf(m)>-1 || defaultNoPrizeStr.indexOf(m)>-1 ){}else{
+                     return true;
+                } 
+            });    
+            Shuffle(ret);
+            ret=ret.slice(0,count);
+            if(previewflag){  //预先设置 
+                ret=ret.concat(defaultPrizeArr)
+            }
+            ret.map(function(m,index){
+                  var intm=parseInt(m)-personFromNum;
+                  list[intm].style.color = color;
+                  return m;
+                });
+            this.prizeWriteLocalstorage(ret,name);
+            return ret;
+        },
+        toggle: function(){
+            var that=this;
+            if(this.running){  //停止点击
+                TagCanvas.SetSpeed('myCanvas', speed());
+                var ret = this.lottery(this.defaultSelected.count,this.defaultSelected.name);  //选中数量 / 选中名称
+                if(this.isShowAward){   //是否显示奖品名称
+                    var trueAward=this.defaultSelected.award;
+                    var ss=this.defaultSelected.name.replace(/\d+/g,''); 
+                }else{  var ss=""}
+
+                this.resultData={ 
+                    isShow:true,
+                    award:ss,
+                    data:ret   //奖品号码
+                } 
+                TagCanvas.Reload('myCanvas');
+                setTimeout(function(){
+                    that.$set(that.resultData,'isMask',true)
+                }, 100);
+            } else {  //开始点击，设置 颜色显示
+                var memberlen=this.memberArr.length;  //成员的数据长度
+                var choosePersonLen=this.hadChoosed().choosed.length;
+                var choosePersonObj=this.hadChoosed().prizeNamelocal;
+                var drawBtnStr=this.drawBtn.toString();
+                var personFromNum=this.member.start;
+                if(choosePersonLen>=memberlen){
+                    alert("抽到奖品人数  大于 设置人数");
+                    return;
+                }
+                TagCanvas.SetSpeed('myCanvas', [5, 1]);
+
+
+                var aDom =document.querySelectorAll("#myCanvas li a");
+                for(var i=0;i<aDom.length;i++){
+                    aDom[i].style.color="#fff";
+                }
+
+                if(drawBtnStr.indexOf(this.defaultSelected.name)>-1){  //一等奖或是特等奖点击显示都显示白色
+                }else{
+                    var drawBtnStr=this.drawBtn.toString();
+                    var prizeArrb=this.hadChoosed();
+                    var prizeobj=prizeArrb.prizeNamelocal;
+                    var allarrStr="";
+                    var allarr=[];
+                    for(var key in prizeobj){
+                        if(this.defaultSelected.name==key){}else{
+                            allarrStr+=prizeobj[key].toString()+",";
+                        }
+                    }
+                    if(allarrStr!=""){
+                        allarrStr=allarrStr.slice(0,-1);
+                        allarr=allarrStr.split(",");
+                    }
+                    if(allarr.length>0){
+                        var list =document.querySelectorAll("#myCanvas li a");
+                        for(var i=0;i<allarr.length;i++){
+                            var intm=parseInt(allarr[i])-personFromNum;
+                            list[intm].style.color ="yellow";
+                        }
+                    }
+                }
+                TagCanvas.Reload('myCanvas');
+            }
+            this.running = !this.running;
+           // $("#setup").hide();
+        },
+        prizeWriteLocalstorage:function(ret,name){   //中奖人数存储
+            var prizeObj=this.hadChoosed().prizeNamelocal; // {"一等奖":[1,2]}
+            prizeObj[name]=ret;  
+            var objString=JSON.stringify(prizeObj);
+            localStorage.setItem('prizeNameArr', objString);
+        },
+        closeMask(){
+          this.$set(this.resultData,"isMask",false);
+          this.$set(this.resultData,"isShow",false)
+        },
+        /*
+            数组：[1,2] 这种
+            变成: [001,002] 且在 人数范围之内。
+        */
+        rankNum:function(arr){  //在 0-400之内,并过滤数字,变成 002这种形式
+          var that=this;
+            var startMember=this.member.start;
+            var endMember=this.member.end;
+            var endMemberLen=(""+endMember).length;
+            var outArr=[];
+            for(var i=0;i<arr.length;i++){
+                if(arr[i]>=startMember && arr[i]<=endMember){
+                    var numLen=(""+arr[i]).length;
+                    var count=endMemberLen-numLen;
+                    outArr.push((that.strRepeat(0,count)+arr[i]));
+                }
+            }
+            return outArr;
+        },
+        strRepeat:function(number,count){  //(0,3) 重复0三次=》000 
+            var str="";
+            for(var i=0;i<count;i++){
+                str+=""+number;
+            }
+            return str;
+        },
+        resetF(){   //重置点击
+           if(confirm("确定重置吗")){
+              localStorage.clear();
+              location.reload();
+           }
+        },
+    }
+
+})
+
+
+
+
+</script>
+</body>
+</html>
